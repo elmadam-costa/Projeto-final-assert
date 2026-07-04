@@ -21,6 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include "Bsp.h"
+#include "Sampler.h"
+#include "LedPwm.h"
+#include "SerialCmd.h"
+#include "Button.h"
 
 /* USER CODE END Includes */
 
@@ -108,13 +114,54 @@ int main(void)
   MX_TIM7_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  Bsp_Init();
+  Sampler_Init();
+  LedPwm_Init();
+  Button_Init();
+  uint16_t windowCounter = 0;
+  uint8_t lastFilteredPercent = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  Button_Process();
+	  SerialCmd_Process();
+
+	  if (Bsp_IsSampleTimeFlagSet())
+	  {
+	      Bsp_ClearSampleTimeFlag();
+
+	      if (Button_IsFrozen() == 0)
+	      {
+	          uint16_t rawAdc = Bsp_AdcReadRaw();
+	          Sampler_AddSample(rawAdc);
+
+	          if (Sampler_IsWindowComplete())
+	          {
+	              lastFilteredPercent = Sampler_ComputeFilteredPercent();
+	              LedPwm_ApplyToSelected(lastFilteredPercent);
+
+	              windowCounter++;
+	              if (windowCounter >= 2)
+	              {
+	                  windowCounter = 0;
+	                  char statusLine[64];
+	                  const char *stateText = (Button_IsFrozen() != 0) ? "OFF" : "ON";
+	                  snprintf(statusLine, 64,
+	                      "VALUE: %u%% || LED1: %u%% aceso || LED2: %u%% aceso || LED3: %u%% aceso || STATE: %s\r\n",
+	                      lastFilteredPercent,
+	                      LedPwm_GetDuty(LEDPWM_LED_1),
+	                      LedPwm_GetDuty(LEDPWM_LED_2),
+	                      LedPwm_GetDuty(LEDPWM_LED_3),
+	                      stateText);
+	                  Bsp_UartPrint(statusLine);
+	              }
+	          }
+	      }
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
